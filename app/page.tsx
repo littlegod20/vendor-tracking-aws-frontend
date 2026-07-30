@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { withAuthenticator } from '@aws-amplify/ui-react';
+import '@aws-amplify/ui-react/styles.css';
 import { createVendor, getVendors, deleteVendor } from '@/lib/api';
 import { Vendor } from '@/types/vendor';
 
-export default function Home() {
+// the withAuthenticator injects 'signOut' and 'user' as props automatically
+function Home({signOut, user}: {signOut?:()=> void; user?:any}) {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [form, setForm] = useState({ name: '', category: '', contactEmail: '' });
   const [loading, setLoading] = useState(false);
@@ -54,6 +57,20 @@ export default function Home() {
     <main className="p-10 max-w-5xl mx-auto">
       <h1 className="text-3xl font-bold mb-2 text-gray-400">Vendor Tracker</h1>
       <p className="text-gray-500 mb-8">Manage your vendors, stored in AWS DynamoDB.</p>
+
+      {/* ── Header ── */}
+      <header className="flex justify-between items-center mb-8 p-4 bg-gray-100 rounded">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Vendor Tracker</h1>
+          <p className="text-sm text-gray-500">Signed in as: {user?.signInDetails?.loginId}</p>
+        </div>
+        <button
+          onClick={signOut}
+          className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors"
+        >
+          Sign Out
+        </button>
+      </header>
 
       {error && (
         <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">{error}</div>
@@ -131,3 +148,6 @@ export default function Home() {
     </main>
   );
 }
+
+// wrapping home withAuthenticator means any user who is not logged in will see amplify's built-in login/signup screen instead of this component.
+export default withAuthenticator(Home)
