@@ -1,36 +1,165 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vendor Tracker — Frontend
 
-## Getting Started
+Next.js UI for managing vendors against the AWS backend (API Gateway, Cognito, DynamoDB). Users sign up / sign in with Amazon Cognito via Amplify, then create, list, and delete vendors.
 
-First, run the development server:
+## Tech stack
+
+| Layer | Choice |
+|-------|--------|
+| Framework | [Next.js](https://nextjs.org/) 16 (App Router) |
+| UI | React 19, Tailwind CSS 4 |
+| Auth | [AWS Amplify](https://docs.amplify.aws/) + Cognito (`@aws-amplify/ui-react`) |
+| Language | TypeScript |
+| Deploy shape | Static export (`output: 'export'`) → `out/` for S3 + CloudFront |
+
+## Project structure
+
+```
+frontend/
+├── app/
+│   ├── layout.tsx      # Root layout; wraps the app in <Providers>
+│   ├── page.tsx        # Main vendor UI (gated by withAuthenticator)
+│   ├── providers.tsx   # Amplify.configure (Cognito) at module load
+│   └── globals.css
+├── lib/
+│   └── api.ts          # Authenticated fetch helpers for /vendors
+├── types/
+│   └── vendor.ts       # Vendor type
+├── next.config.ts      # output: 'export' for static hosting
+└── .env.local          # Public API + Cognito IDs (not committed)
+```
+
+## How it works
+
+1. **`Providers`** loads on every page via `layout.tsx` and runs `Amplify.configure` with your Cognito User Pool ID and App Client ID.
+2. **`page.tsx`** is wrapped with `withAuthenticator`. Unauthenticated users see Amplify’s built-in sign-in / sign-up UI.
+3. After login, the page calls `lib/api.ts`, which:
+   - Reads the Cognito **ID token** via `fetchAuthSession()`
+   - Sends it as the `Authorization` header to API Gateway
+4. API Gateway’s Cognito authorizer validates the token, then invokes the matching Lambda.
+
+```
+Browser → Amplify Auth (Cognito)
+       → API Gateway (/vendors) + JWT
+       → Lambda → DynamoDB
+```
+
+## Prerequisites
+
+- Node.js 20+ recommended
+- Backend stack already deployed (see `../backend/README.md`)
+- Values from CDK outputs:
+  - `ApiEndpoint`
+  - `UserPoolId`
+  - `UserPoolClientId`
+
+## Environment variables
+
+Create `frontend/.env.local` (never commit secrets or account-specific IDs if your policy forbids it):
+
+```env
+NEXT_PUBLIC_API_URL=https://xxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/
+NEXT_PUBLIC_USER_POOL_ID=us-east-1_XXXXXXXXX
+NEXT_PUBLIC_USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `NEXT_PUBLIC_API_URL` | API Gateway base URL (must include trailing slash if your code expects it) |
+| `NEXT_PUBLIC_USER_POOL_ID` | Cognito User Pool ID |
+| `NEXT_PUBLIC_USER_POOL_CLIENT_ID` | Cognito App Client ID |
+
+`NEXT_PUBLIC_*` vars are inlined into the client bundle at build time. Rebuild after changing them.
+
+## Getting started
+
+```bash
+cd frontend
+npm install
+```
+
+Copy CDK outputs into `.env.local`, then:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Local development server |
+| `npm run build` | Production build + static export to `out/` |
+| `npm run start` | Serve a non-export Next server build (not used for S3 static hosting) |
+| `npm run lint` | ESLint |
 
-## Learn More
+## Features
 
-To learn more about Next.js, take a look at the following resources:
+- **Auth** — Email sign-up / sign-in, email verification code (Cognito), sign out
+- **Add vendor** — Name, category, contact email
+- **List vendors** — Loaded from DynamoDB via `GET /vendors`
+- **Delete vendor** — Removes a row by `vendorId`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Vendor shape
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```ts
+interface Vendor {
+  vendorId?: string;
+  name: string;
+  category: string;
+  contactEmail: string;
+  createdAt?: string;
+}
+```
 
-## Deploy on Vercel
+## API client (`lib/api.ts`)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Function | Method | Path | Auth |
+|----------|--------|------|------|
+| `getVendors()` | `GET` | `/vendors` | ID token |
+| `createVendor(vendor)` | `POST` | `/vendors` | ID token + JSON body |
+| `deleteVendor(vendorId)` | `DELETE` | `/vendors` | JSON body `{ vendorId }` |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> Note: Backend routes for GET/POST/DELETE are Cognito-protected. Ensure delete requests also send `Authorization` if you see 401s.
+
+## Static export & deploy
+
+`next.config.ts` sets `output: 'export'`, so `npm run build` writes a static site to `frontend/out/`.
+
+The backend CDK stack deploys that folder to S3 and serves it through CloudFront (`DeployWebsite` uses `../frontend/out`).
+
+Typical release flow:
+
+```bash
+# 1. Ensure .env.local has production Cognito + API values
+cd frontend
+npm run build
+
+# 2. Deploy infra (uploads out/ to S3 and invalidates CloudFront)
+cd ../backend
+npx cdk deploy
+```
+
+After deploy, use the `CloudFrontURL` stack output.
+
+## Auth wiring (quick reference)
+
+- `app/providers.tsx` — `Amplify.configure({ Auth: { Cognito: { ... } } }, { ssr: true })`
+- `app/page.tsx` — `export default withAuthenticator(Home)`
+- Tokens — `fetchAuthSession()` → `session.tokens.idToken`
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---------|----------------|
+| Amplify login never appears / Auth errors | Missing or wrong `NEXT_PUBLIC_USER_POOL_*` values; rebuild after changing env |
+| `Failed to load vendors` / 401 | Expired or missing ID token; API URL wrong; authorizer misconfigured |
+| CORS errors | API Gateway CORS not allowing your origin / headers |
+| Blank CloudFront site | Forgot `npm run build` before `cdk deploy`, or `out/` empty |
+| Env vars “not updating” | Next inlines `NEXT_PUBLIC_*` at build time — restart `dev` or rebuild |
+
+## Related
+
+- Backend / CDK stack: [`../backend/README.md`](../backend/README.md)
