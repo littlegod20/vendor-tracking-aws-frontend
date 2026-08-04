@@ -2,6 +2,9 @@
 
 Next.js UI for managing vendors against the AWS backend (API Gateway, Cognito, DynamoDB). Users sign up / sign in with Amazon Cognito via Amplify, then create, list, and delete vendors.
 
+## Related Repository
+**Backend:** [littlegod20/vendor-tracking-aws-backend](https://github.com/littlegod20/vendor-tracking-aws-backend.git)
+
 ## Tech stack
 
 | Layer | Choice |
@@ -160,6 +163,3 @@ After deploy, use the `CloudFrontURL` stack output.
 | Blank CloudFront site | Forgot `npm run build` before `cdk deploy`, or `out/` empty |
 | Env vars “not updating” | Next inlines `NEXT_PUBLIC_*` at build time — restart `dev` or rebuild |
 
-## Related
-
-- Backend / CDK stack: [`../backend/README.md`](../backend/README.md)
