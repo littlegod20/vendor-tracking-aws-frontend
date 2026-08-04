@@ -2,7 +2,6 @@
 
 Next.js UI for managing vendors against the AWS backend (API Gateway, Cognito, DynamoDB). Users sign up / sign in with Amazon Cognito via Amplify, then create, list, and delete vendors.
 
-## Related Repository
 **Backend:** [littlegod20/vendor-tracking-aws-backend](https://github.com/littlegod20/vendor-tracking-aws-backend.git)
 
 ## Tech stack
